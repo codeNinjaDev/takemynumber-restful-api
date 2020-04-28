@@ -1,10 +1,12 @@
-const http = require('http');
+const createServer = require('http').createServer;
 const express = require("express");
+const static = require("express").static;
 const app = express();
 const morgan = require("morgan");
-const bodyParser = require("body-parser");
+const urlencoded = require("body-parser").urlencoded;
+const json = require("body-parser").json;
 const mongoose = require("mongoose");
-const server = http.createServer(app);
+const server = createServer(app);
 
 const io = require("socket.io")(server);
 
@@ -26,9 +28,9 @@ mongoose.Promise = global.Promise;
 
 
 app.use(morgan("dev"));
-app.use('/uploads', express.static('uploads'));
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+app.use('/uploads', static('uploads'));
+app.use(urlencoded({ extended: false }));
+app.use(json());
 
 
 app.use((req, res, next) => {

@@ -1,9 +1,9 @@
-const mongoose = require("mongoose");
+const Types = require("mongoose").Types;
 const Vendor = require("../models/vendor");
 const Order = require("../models/order");
 
 exports.vendors_get_all = (req, res, next) => {
-  Vendor.find()
+  find()
     .select("brand location _id vendorImage currentNumber nextUpNumber")
     .exec()
     .then(docs => {
@@ -11,12 +11,14 @@ exports.vendors_get_all = (req, res, next) => {
         count: docs.length,
         vendors: docs.map(doc => {
           return {
-            brand: doc.brand,
-                                  location: doc.location,
-            vendorImage: doc.vendorImage,
             _id: doc._id,
-            currentNumber: doc.currentNumber,
-            nextUpNumber: doc.nextUpNumber,
+            maxOccupants: doc.maxOccupants,
+            currentOccupants: doc.currentOccupants,
+            brand: doc.brand,
+            location: doc.location,
+            vendorImage: doc.vendorImage,
+            numberUp: doc.numberUp,
+            userQueue: doc.userQueue,
             request: {
               type: "GET",
               url: "http://localhost:3000/vendors/" + doc._id
@@ -24,13 +26,8 @@ exports.vendors_get_all = (req, res, next) => {
           };
         })
       };
-      //   if (docs.length >= 0) {
       res.status(200).json(response);
-      //   } else {
-      //       res.status(404).json({
-      //           message: 'No entries found'
-      //       });
-      //   }
+
     })
     .catch(err => {
       console.log(err);
@@ -38,15 +35,18 @@ exports.vendors_get_all = (req, res, next) => {
         error: err
       });
     });
-};
+}
 
 exports.vendors_create_vendor = (req, res, next) => {
   const vendor = new Vendor({
-    _id: new mongoose.Types.ObjectId(),
+    _id: new Types.ObjectId(),
     brand: req.body.brand,
     location: req.body.location,
-    currentNumber: 1,
-    nextUpNumber: 0
+    maxOccupants: req.body.maxOccupants,
+    currentOccupants: req.body.currentOccupants,
+    userQueue: 0,
+    numberUp: maxOccupants,
+    vendorImage: req.body.vendorImage
   });
   vendor
     .save()
@@ -55,11 +55,13 @@ exports.vendors_create_vendor = (req, res, next) => {
       res.status(201).json({
         message: "Created vendor successfully",
         createdVendor: {
+          _id: result._id, 
           brand: result.brand,
           location: result.location,
-          _id: result._id,
-          currentNumber: result.currentNumber,
-          nextUpNumber: result.nextUpNumber,
+          maxOccupants: result.maxOccupants,
+          currentOccupants: result.currentOccupants,
+          numberUp: result.numberUp,
+          userQueue: result.userQueue,
           request: {
             type: "GET",
             url: "http://localhost:3000/vendors/" + result._id
@@ -73,70 +75,83 @@ exports.vendors_create_vendor = (req, res, next) => {
         error: err
       });
     });
-};
+}
 
-exports.vendors_get_vendor = (req, res, next) => {
+exports.vendors_get_vendor = async (req, res, next) => {
   const id = req.params.vendorId;
-  Vendor.findById(id)
-    .select("brand location _id vendorImage")
-    .exec()
-    .then(doc => {
-      console.log("From database", doc);
-      if (doc) {
-        res.status(200).json({
-          vendor: doc,
-          request: {
-            type: "GET",
-            url: "http://localhost:3000/vendors"
-          }
-        });
-      } else {
-        res
-          .status(404)
-          .json({ message: "No valid entry found for provided ID" });
-      }
-    })
-    .catch(err => {
-      console.log(err);
-      res.status(500).json({ error: err });
-    });
-};
-
-
-exports.vendors_update_vendor = async (req, res, next) => {
   try {
-    const id = req.params.vendorId;
     const currVendor = await Vendor.findById(id);
     if (currVendor == null) {
       return res.status(404).json({ message: "Vendor not found" });
     }
-    currVendor.currentNumber++;
-    currVendor.save();
-    const orders = await Order.find({ vendor: id});
-    console.log(orders);
-    for (const order of orders) {
-      if ((order.orderNumber <= currVendor.currentNumber) && !order.called) {
-        order.called = true;
-        order.save();
-        console.log("number...")
-      }
-    }
-    // use the debugger if you want to check the value of this variable
-    const result = await currVendor.save();
-    return res.status(201).json({
+  
+    return res.status(200).json({
       "vendor_id": currVendor._id,
-      "currentNumber": currVendor.currentNumber,
-      "brand": currVendor.brand
+      "brand": currVendor.brand,
+      "currentOccupants": currVendor.currentOccupants,
+      "maxOccupants": currVendor.maxOccupants,
+      "vendorImageURL": currVendor.vendorImage,
+      "numberUp": currVendor.numberUp,
+      "userQueue": currVendor.userQueue
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error });
   }
-};
+}
+
+
+exports.vendors_update_vendor = async (req, res, next) => {
+  try {
+    const id = req.params.vendorId;
+    const updateType = req.body.updateType;
+
+    const currVendor = await findById(id);
+    if (currVendor == null) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    if (updateType === "ENTER") {
+      currVendor.currentOccupants++;
+
+      // use the debugger if you want to check the value of this variable
+      const result = await currVendor.save();
+    } else if (updateType === "EXIT") {
+      currVendor.currentOccupants--;
+      if (currVendor.currentOccupants < currVendor.maxOccupants) {
+        currVendor.numberUp++;
+      }
+      currVendor.save(); 
+
+      const orders = await Order.find({ vendor: id});
+      console.log(orders);
+      for (const order of orders) {
+        if ((order.orderNumber <= currVendor.numberUp) && !order.called) {
+          order.called = true;
+          order.save();
+          console.log("Calling " + order.user);
+        }
+      }
+    }
+    
+    return res.status(201).json({
+      "vendor_id": currVendor._id,
+      "currentOccupants": currVendor.currentOccupants,
+      "maxOccupants": currVendor.maxOccupants,
+      "brand": currVendor.brand,
+      "numberUp": currVendor.numberUp,
+      "image": currVendor.vendorImage
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error });
+  }
+}
 
 exports.vendors_delete = (req, res, next) => {
   const id = req.params.vendorId;
-  Vendor.remove({ _id: id })
+  remove({ _id: id })
     .exec()
     .then(result => {
       res.status(200).json({
@@ -154,4 +169,4 @@ exports.vendors_delete = (req, res, next) => {
         error: err
       });
     });
-};
+}

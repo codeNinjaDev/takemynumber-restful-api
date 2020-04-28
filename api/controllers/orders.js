@@ -1,9 +1,8 @@
-const mongoose = require("mongoose");
-
+const Types = require("mongoose").Types;
 const Order = require("../models/order");
-const Vendor = require("../models/vendor");
+const findById = require("../models/vendor").findById;
 
-exports.orders_get_all = (req, res, next) => {
+exports.orders_get_all = async (req, res, next) => {
   Order.find()
     .select("vendor user _id orderNumber")
     .populate("vendor", "brand")
@@ -30,7 +29,7 @@ exports.orders_get_all = (req, res, next) => {
         error: err
       });
     });
-};
+}
 
 const makeOrderResponse = (order) => ({
   message: "Order stored",
@@ -49,19 +48,19 @@ const makeOrderResponse = (order) => ({
 exports.orders_create_order = async (req, res, next) => {
   try {
     const { vendorId, userId } = req.body;
-    const vendor = await Vendor.findById(vendorId);
+    const vendor = await findById(vendorId);
     if (vendor == null) {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
     const order = new Order({
-      _id: mongoose.Types.ObjectId(),
+      _id: Types.ObjectId(),
       user: userId,
       vendor: vendorId,
-      orderNumber: vendor.nextUpNumber + 1,
+      orderNumber: vendor.userQueue + 1,
     });
-    console.log(vendor.nextUpNumber)
-    vendor.nextUpNumber++;
+    console.log(vendor.userQueue)
+    vendor.userQueue++;
     vendor.save();
 
     // use the debugger if you want to check the value of this variable
@@ -71,7 +70,7 @@ exports.orders_create_order = async (req, res, next) => {
     console.error(error);
     res.status(500).json({ error });
   }
-};
+}
 
 exports.orders_get_order = (req, res, next) => {
   Order.findById(req.params.orderId)
@@ -96,7 +95,7 @@ exports.orders_get_order = (req, res, next) => {
         error: err
       });
     });
-};
+}
 
 exports.orders_delete_order = (req, res, next) => {
   Order.remove({ _id: req.params.orderId })
@@ -107,7 +106,7 @@ exports.orders_delete_order = (req, res, next) => {
         request: {
           type: "POST",
           url: "http://localhost:3000/orders",
-          body: { vendorId: "vendorId", userId: "UserId"}
+          body: { vendorId: "vendorId", userId: "userId"}
         }
       });
     })
@@ -116,4 +115,4 @@ exports.orders_delete_order = (req, res, next) => {
         error: err
       });
     });
-};
+}
